@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordFind_v1</title>
+    <img src="https://cdn0.iconfinder.com/data/icons/ie_Bright/512/find.png" alt="Forest Landscape"
+        class="top-right-image" ;>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #ffce00;
+            font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+        }
+
+        form {
+            margin-bottom: 1em;
+        }
+
+        input {
+            margin-top: 0.5em;
+        }
+
+        .search-results-grid {
+            margin: 2px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            background-color: #eee;
+        }
+
+        .search-result-item {
+            border: 2px solid black;
+            padding: 10px;
+            word-wrap: break-word;
+            margin: 2px;
+        }
+
+        h1 {
+            font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+            background-color: #ffd900e8;
+            text-align: left;
+            color: black;
+            font-size: 2em;
+            border-bottom: 2px solid black;
+            border-left: 2px solid black;
+            padding: 15px 8px;
+            margin-bottom: 0.5em;
+        }
+
+        .top-right-image {
+            position: absolute;
+            top: 0;
+            right: 10px;
+            width: 60px;
+            height: 60px;
+        }
+    </style>
+
+</head>
+
+<body>
+    <h1>WordFind API</h1>
+    <div id="registerForm">
+        <h2>Registration</h2>
+        <form id="registerForm">
+            <input type="text" id="regUserId" placeholder="User ID" required>
+            <input type="text" id="regUsername" placeholder="User Name" required>
+            <input type="password" id="regPassword" placeholder="Password" required>
+            <input type="email" id="regEmail" placeholder="Email" required>
+            <button type="submit">Register</button>
+        </form>
+    </div>
+
+    <div id="loginForm">
+        <h2>Login</h2>
+        <form id="loginForm">
+            <input type="text" id="userId" placeholder="User ID" required>
+            <input type="password" id="password" placeholder="Password" required>
+            <button id="loginButton" type="submit">Login</button>
+        </form>
+    </div>
+
+    <div id="searchForm" style="display: none;">
+        <h2>Search</h2>
+        <input type="text" id="searchCriteria" placeholder="Search Criteria" required>
+        <input type="text" id="selectedExtension" placeholder="Selected Extension" required>
+        <input type="text" id="folderPath" placeholder="Folder Path" required>
+        <button type="submit" onclick="performSearch()">Search</button>
+        <button id="download" onclick="downloadResults()"
+            style="display: none; position: relative; margin: 2px;">Download Result</button>
+    </div>
+
+    <div id="searchResults"></div>
+    <button id="logout" onclick="logOut()"
+        style="display: none; position: relative; margin: 2px; bottom: 4px; left: 620px;">Logout</button>
+    <script>
+
+        document.getElementById('registerForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            const regUserId = document.getElementById('regUserId').value;
+            const regUsername = document.getElementById('regUsername').value;
+            const regPassword = document.getElementById('regPassword').value;
+            const regEmail = document.getElementById('regEmail').value;
+
+            const errorMessage = validateRegistrationInput(regUserId, regUsername, regPassword, regEmail);
+            if (errorMessage) {
+                alert(errorMessage);
+                return;
+            }
+
+            fetch('https://localhost:7292/api/authentication/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userId: regUserId, username: regUsername, password: regPassword, email: regEmail })
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Registration failed');
+                    }
+                    alert('Registration successful');
+                    console.log('Registration successful');
+                })
+                .catch(error => {
+                    console.error('Registration error:', error.message);
+                    alert('Registration Failed: ' + error.message);
+                });
+        })
+
+        function validateRegistrationInput(userId, username, password, email) {
+            let errorMessage = "";
+
+            if (!userId) {
+                errorMessage += "User ID is required. \n";
+            } else if (userId.length < 6) {
+                errorMessage += "User ID must be at least 6 characters long. \n";
+            }
+
+            if (!username) {
+                errorMessage += "Username is required. \n";
+            }
+
+            if (!email) {
+                errorMessage += "Email is required. \n";
+            } else if (!/^\S+@\S+\.\S+$/.test(email)) {
+                errorMessage += "Invalid email format. \n";
+            }
+
+            if (!password) {
+                errorMessage += "Password is required. \n";
+            } else if (password.length < 8) {
+                errorMessage += "Password must be at least 8 characters long. \n";
+            }
+
+            return errorMessage;
+        }
+
+        let loginAttempts = 0;
+        const loginButton = document.getElementById('loginButton'); 
+        const lockoutDurationMs = 1 * 60 * 1000; 
+
+        document.getElementById('loginForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            const userId = document.getElementById('userId').value;
+            const password = document.getElementById('password').value;
+
+            loginAttempts++;
+
+            fetch('https://localhost:7292/api/authentication/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userId, password })
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        if (response.status === 401) {
+                            throw new Error('Invalid username or password');
+                        } else {
+                            throw new Error('Login failed');
+                        }
+                    }
+                    return response.text();
+                })
+                .then(authToken => {
+                    saveAuthToken(authToken);
+                    console.log('Authentication successful. AuthToken:', authToken);
+                    alert("Login Successful");
+                    loginAttempts = 0; 
+                    loginButton.disabled = false; 
+                    document.getElementById('searchForm').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Login error:', error.message);
+                    if (loginAttempts >= 3) {
+                        alert("Too many login attempts. Account locked for 15 minutes.");
+                        loginButton.disabled = true; 
+                    } else {
+                        alert(error.message); 
+                    }
+                });
+        });
+
+
+
+
+
+        function performSearch() {
+            const authToken = localStorage.getItem('authToken');
+            if (!authToken) {
+                console.error('Authentication token not found');
+                alert('Please log in first.');
+                return;
+            }
+
+            const searchCriteria = document.getElementById('searchCriteria').value;
+            const selectedExtension = document.getElementById('selectedExtension').value;
+            const folderPath = document.getElementById('folderPath').value;
+
+            fetch('https://localhost:7292/api/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({ authToken, searchCriteria, selectedExtension, folderPath })
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Search failed');
+                    }
+                    return response.json();
+                })
+                .then(searchResults => {
+                    displaySearchResults(searchResults);
+                })
+                .catch(error => {
+                    console.error('Search error:', error.message);
+                    alert('Search failed. Please try again.');
+                });
+            document.getElementById('download').style.display = 'block';
+            document.getElementById('logout').style.display = 'inline-block';
+
+        }
+
+        function displaySearchResults(results) {
+            const searchResultsElement = document.getElementById('searchResults');
+            searchResultsElement.innerHTML = '';
+
+            if (results.length === 0) {
+                searchResultsElement.textContent = 'No results found.';
+                return;
+            }
+
+            const resultList = document.createElement('div');
+            resultList.classList.add('search-results-grid');
+
+            results.forEach(result => {
+                const resultItem = document.createElement('div');
+                resultItem.classList.add('search-result-item');
+                resultItem.innerHTML = `
+                <div><strong>File:</strong> ${result.fileName}</div>
+                <div><strong>Path:</strong> ${result.filePath}</div>
+                <div><strong>Method:</strong> ${result.methodName}</div>
+                <div><strong>Line:</strong> ${result.lineNumber}</div>
+                <br>
+            `;
+                resultList.appendChild(resultItem);
+            });
+
+            searchResultsElement.appendChild(resultList);
+        }
+
+        function downloadResults() {
+            const searchResults = document.getElementById('searchResults').innerText;
+            const blob = new Blob([searchResults], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'search_results.txt';
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function logOut() {
+            localStorage.removeItem(saveAuthToken);
+            document.getElementById('searchForm').style.display = 'none';
+            document.getElementById('download').style.display = 'none';
+            document.getElementById('searchResults').style.display = 'none';
+            document.getElementById('logout').style.display = 'none';
+        }
+        function saveAuthToken(authToken) {
+            localStorage.setItem('authToken', authToken);
+        }
+    </script>
+
+</body>
+
+</html>

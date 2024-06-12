@@ -1,0 +1,6 @@
+@WordFind_HostAddress = http://localhost:5064
+
+GET {{WordFind_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
